@@ -20,7 +20,7 @@
 // pub static LET: &str = "LET";
 // // pub static : &str = "";
 use std::collections::HashMap;
-
+#[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum TokenTypes {
   ILLEGAL,
@@ -43,14 +43,28 @@ pub enum TokenTypes {
   RPAREN,
   LBRACE,
   RBRACE,
+  
+  // Keywords
   FUNCTION,
   LET,
+  TRUE,
+  FALSE,
+  IF,
+  ELSE,
+  RETURN,
+  EQ,
+  NOT_EQ
 }
 
 pub fn keywords<'a>() -> std::collections::HashMap<&'a str, TokenTypes> {
   let mut map = HashMap::new();
   map.insert("fn", TokenTypes::FUNCTION);
   map.insert("let", TokenTypes::LET);
+  map.insert("true", TokenTypes::TRUE);
+  map.insert("false", TokenTypes::FALSE);
+  map.insert("if", TokenTypes::IF);
+  map.insert("else", TokenTypes::ELSE);
+  map.insert("return", TokenTypes::RETURN);
   map
 }
 

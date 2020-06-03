@@ -35,14 +35,36 @@ impl Lexer {
     self.skip_whitespace();
     let mut is_symbol = true;
     let tok = match self.ch as char {
-      '=' => Token { token_type: TokenTypes::ASSIGN, literal: self.ch.to_string() },
+      '=' => {
+        println!("{}", self.peekChar());
+        if self.peekChar() == '=' {
+          let ch = self.ch;
+          // Workaround for symbols with 2 chars
+          self.read_char();
+          self.read_char();
+          // End workaround
+          return Token { token_type: TokenTypes::EQ, literal: ch.to_string() + &self.ch.to_string() }
+        }
+        Token { token_type: TokenTypes::ASSIGN, literal: self.ch.to_string() }
+      },
       ';' => Token { token_type: TokenTypes::SEMICOLON, literal: self.ch.to_string() },
       '(' => Token { token_type: TokenTypes::LPAREN, literal: self.ch.to_string() },
       ')' => Token { token_type: TokenTypes::RPAREN, literal: self.ch.to_string() },
       ',' => Token { token_type: TokenTypes::COMMA, literal: self.ch.to_string() },
       '+' => Token { token_type: TokenTypes::PLUS, literal: self.ch.to_string() },
       '-' => Token { token_type: TokenTypes::MINUS, literal: self.ch.to_string() },
-      '!' => Token { token_type: TokenTypes::BANG, literal: self.ch.to_string() },
+      '!' => {
+        if self.peekChar() == '=' {
+          println!("{}", self.peekChar());
+          let ch = self.ch;
+          // Workaround for symbols with 2 chars
+          self.read_char();
+          self.read_char();
+          // End workaround
+          return Token { token_type: TokenTypes::NOT_EQ, literal: ch.to_string() + &self.ch.to_string() }
+        }
+        Token { token_type: TokenTypes::BANG, literal: self.ch.to_string() }
+      },
       '*' => Token { token_type: TokenTypes::ASTERISK, literal: self.ch.to_string() },
       '/' => Token { token_type: TokenTypes::SLASH, literal: self.ch.to_string() },
       '<' => Token { token_type: TokenTypes::LT, literal: self.ch.to_string() },
@@ -87,6 +109,13 @@ impl Lexer {
       self.read_char()
     }
   }
+  fn peekChar(&mut self) -> char {
+    if self.read_position as usize >= self.input.len() {
+      '\0'
+    } else {
+      (self.input.as_bytes()[self.read_position as usize]) as char
+    }
+  }
 }
 
 #[cfg(test)]
@@ -103,8 +132,17 @@ mod tests {
     let result = add(five, ten);
     !-/*5;
     5 < 10 > 5;
+
+    if (5 < 10) {
+      return true;
+    } else {
+      return false;
+    }
+
+    10 == 10;
+    10 != 9;
     "#;
-    let types: [(TokenTypes, &str); 49] = [
+    let types: [(TokenTypes, &str); 74] = [
       (TokenTypes::LET, "let"),
       (TokenTypes::IDENT, "five"),
       (TokenTypes::ASSIGN, "="),
@@ -152,6 +190,31 @@ mod tests {
       (TokenTypes::INT, "10"),
       (TokenTypes::GT, ">"),
       (TokenTypes::INT, "5"),
+      (TokenTypes::SEMICOLON, ";"),
+      (TokenTypes::IF, "if"),
+      (TokenTypes::LPAREN, "("),
+      (TokenTypes::INT, "5"),
+      (TokenTypes::LT, "<"),
+      (TokenTypes::INT, "10"),
+      (TokenTypes::RPAREN, ")"),
+      (TokenTypes::LBRACE, "{"),
+      (TokenTypes::RETURN, "return"),
+      (TokenTypes::TRUE, "true"),
+      (TokenTypes::SEMICOLON, ";"),
+      (TokenTypes::RBRACE, "}"),
+      (TokenTypes::ELSE, "else"),
+      (TokenTypes::LBRACE, "{"),
+      (TokenTypes::RETURN, "return"),
+      (TokenTypes::FALSE, "false"),
+      (TokenTypes::SEMICOLON, ";"),
+      (TokenTypes::RBRACE, "}"),
+      (TokenTypes::INT, "10"),
+      (TokenTypes::EQ, "=="),
+      (TokenTypes::INT, "10"),
+      (TokenTypes::SEMICOLON, ";"),
+      (TokenTypes::INT, "10"),
+      (TokenTypes::NOT_EQ, "!="),
+      (TokenTypes::INT, "9"),
       (TokenTypes::SEMICOLON, ";"),
       (TokenTypes::EOF, "\0"),
     ];
