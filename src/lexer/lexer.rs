@@ -36,8 +36,8 @@ impl Lexer {
     let mut is_symbol = true;
     let tok = match self.ch as char {
       '=' => {
-        println!("{}", self.peekChar());
-        if self.peekChar() == '=' {
+        println!("{}", self.peek_char());
+        if self.peek_char() == '=' {
           let ch = self.ch;
           // Workaround for symbols with 2 chars
           self.read_char();
@@ -54,8 +54,8 @@ impl Lexer {
       '+' => Token { token_type: TokenTypes::PLUS, literal: self.ch.to_string() },
       '-' => Token { token_type: TokenTypes::MINUS, literal: self.ch.to_string() },
       '!' => {
-        if self.peekChar() == '=' {
-          println!("{}", self.peekChar());
+        if self.peek_char() == '=' {
+          println!("{}", self.peek_char());
           let ch = self.ch;
           // Workaround for symbols with 2 chars
           self.read_char();
@@ -109,7 +109,7 @@ impl Lexer {
       self.read_char()
     }
   }
-  fn peekChar(&mut self) -> char {
+  fn peek_char(&mut self) -> char {
     if self.read_position as usize >= self.input.len() {
       '\0'
     } else {
