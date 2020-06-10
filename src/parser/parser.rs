@@ -162,6 +162,7 @@ impl Parser {
         match token_type {
             TokenTypes::IDENT => Some(self.parse_identifier()),
             TokenTypes::INT => Some(self.parse_integer_literal()),
+            TokenTypes::BANG | TokenTypes::MINUS => Some(self.parse_prefix_expression()),
             _ => None,
         }
     }
@@ -179,6 +180,25 @@ impl Parser {
             token: self.current_token.clone(),
             value: val.parse().unwrap(),
         };
+    }
+    pub fn parse_prefix_expression(&mut self) -> ExpressionType {
+        let mut expr = ExpressionType::Prefix {
+            token: self.current_token.clone(),
+            operator: self.current_token.literal.clone(),
+            right: Box::from(ExpressionType::None),
+        };
+
+        self.next_token();
+
+        let _ = match &mut expr {
+            ExpressionType::Prefix { right, .. } => {
+                *right = Box::from(self.parse_expression(PRECEDENCES::PREFIX).unwrap());
+                false
+            }
+            _ => false,
+        };
+
+        return expr;
     }
 }
 
@@ -341,5 +361,66 @@ mod tests {
             },
             _ => panic!(),
         }
+    }
+    #[test]
+    fn test_parsing_prefix_expressions() {
+        use std::ops::Deref;
+        struct PrefixTest {
+            input: String,
+            operator: String,
+            integer_value: i64,
+        };
+        let prefix_tests = vec![
+            PrefixTest {
+                input: "!5".to_string(),
+                operator: "!".to_string(),
+                integer_value: 5,
+            },
+            PrefixTest {
+                input: "!5".to_string(),
+                operator: "!".to_string(),
+                integer_value: 5,
+            },
+        ];
+        for prefix in prefix_tests {
+            let l = Lexer::new(&prefix.input);
+            let mut p = Parser::new(l);
+            let program = p.parse_program();
+            assert_eq!(program.statements.len(), 1);
+            let stmt = &program.statements[0];
+            match &stmt.r#type {
+                NodeType::Statement { r#type } => match r#type {
+                    StatementType::Expression { expression, .. } => match expression {
+                        ExpressionType::Prefix {
+                            operator, right, ..
+                        } => {
+                            assert_eq!(operator, &prefix.operator);
+                            assert_eq!(
+                                test_integer_literal(
+                                    (*right.deref()).clone(),
+                                    prefix.integer_value
+                                ),
+                                true
+                            );
+                        }
+                        _ => panic!(),
+                    },
+                    _ => panic!(),
+                },
+                _ => panic!(),
+            }
+        }
+    }
+    fn test_integer_literal(il: ExpressionType, value: i64) -> bool {
+        match il {
+            ExpressionType::Integer {
+                value: real_val, ..
+            } => {
+                assert_eq!(real_val, value);
+                assert_eq!(il.token_literal(), format!("{}", value));
+            }
+            _ => return false,
+        }
+        return true;
     }
 }

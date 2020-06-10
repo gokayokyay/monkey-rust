@@ -87,8 +87,18 @@ impl ToString for StatementType {
 
 #[derive(Debug, Clone)]
 pub enum ExpressionType {
-    Identifier { identifier: Identifier },
-    Integer { token: Token, value: i64 },
+    Identifier {
+        identifier: Identifier,
+    },
+    Integer {
+        token: Token,
+        value: i64,
+    },
+    Prefix {
+        token: Token,
+        operator: String,
+        right: Box<ExpressionType>,
+    },
     None,
 }
 
@@ -97,6 +107,7 @@ impl ExpressionType {
         match &self {
             ExpressionType::Identifier { identifier } => identifier.token_literal(),
             ExpressionType::Integer { token, .. } => token.literal.clone(),
+            ExpressionType::Prefix { token, .. } => token.literal.clone(),
             _ => "".to_string(),
         }
     }
@@ -107,6 +118,16 @@ impl ToString for ExpressionType {
         match &self {
             ExpressionType::Identifier { identifier } => identifier.to_string(),
             ExpressionType::Integer { token, .. } => token.literal.clone(),
+            ExpressionType::Prefix {
+                operator, right, ..
+            } => {
+                let mut out = String::from("");
+                out = out + "(";
+                out = out + operator;
+                out = out + &right.to_string();
+                out = out + ")";
+                out
+            }
             _ => "".to_string(),
         }
     }
