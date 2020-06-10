@@ -4,20 +4,20 @@ use crate::token::token::Token;
 use crate::token::token_types::TokenTypes;
 
 pub enum PRECEDENCES {
-  LOWEST = 1,
-  EQUALS = 2,      // ==
-  LESSGREATER = 3, // > or <
-  SUM = 4,         // +
-  PRODUCT = 5,     // *
-  PREFIX = 6,      // -X or !X
-  CALL = 7,        // myFunction(X)
+    LOWEST = 1,
+    EQUALS = 2,      // ==
+    LESSGREATER = 3, // > or <
+    SUM = 4,         // +
+    PRODUCT = 5,     // *
+    PREFIX = 6,      // -X or !X
+    CALL = 7,        // myFunction(X)
 }
 
 pub struct Parser {
     pub lexer: Lexer,
     pub current_token: Token,
     pub peek_token: Token,
-    pub errors: Vec<String>
+    pub errors: Vec<String>,
 }
 
 impl Parser {
@@ -26,7 +26,7 @@ impl Parser {
             lexer: l,
             current_token: Token::new(TokenTypes::ILLEGAL, ""),
             peek_token: Token::new(TokenTypes::ILLEGAL, ""),
-            errors: vec!()
+            errors: vec![],
         };
         p.next_token();
         p.next_token();
@@ -141,36 +141,44 @@ impl Parser {
         return Some(stmt);
     }
     pub fn parse_expression_statement(&mut self) -> Option<Node> {
-      let stmt = Node {
-        r#type: NodeType::Statement {
-          r#type: StatementType::Expression {
-            token: self.current_token.clone(),
-            expression: self.parse_expression(PRECEDENCES::LOWEST).unwrap()
-          }
+        let stmt = Node {
+            r#type: NodeType::Statement {
+                r#type: StatementType::Expression {
+                    token: self.current_token.clone(),
+                    expression: self.parse_expression(PRECEDENCES::LOWEST).unwrap(),
+                },
+            },
+        };
+        if self.peek_token_is(TokenTypes::SEMICOLON) {
+            self.next_token();
         }
-      };
-      if self.peek_token_is(TokenTypes::SEMICOLON) {
-        self.next_token();
-      }
-      return Some(stmt);
+        return Some(stmt);
     }
     pub fn parse_expression(&mut self, _precedence: PRECEDENCES) -> Option<ExpressionType> {
-      let prefix = self.parse_prefix(self.current_token.token_type);
-      prefix
+        let prefix = self.parse_prefix(self.current_token.token_type);
+        prefix
     }
     pub fn parse_prefix(&mut self, token_type: TokenTypes) -> Option<ExpressionType> {
-      match token_type {
-        TokenTypes::IDENT => Some(self.parse_identifier()),
-        _ => None
-      }
+        match token_type {
+            TokenTypes::IDENT => Some(self.parse_identifier()),
+            TokenTypes::INT => Some(self.parse_integer_literal()),
+            _ => None,
+        }
     }
     pub fn parse_identifier(&mut self) -> ExpressionType {
-      return ExpressionType::Identifier {
-        identifier: Identifier {
-          token: self.current_token.clone(),
-          value: self.current_token.literal.clone()
-        }
-      }
+        return ExpressionType::Identifier {
+            identifier: Identifier {
+                token: self.current_token.clone(),
+                value: self.current_token.literal.clone(),
+            },
+        };
+    }
+    pub fn parse_integer_literal(&mut self) -> ExpressionType {
+        let val = self.current_token.literal.clone();
+        return ExpressionType::Integer {
+            token: self.current_token.clone(),
+            value: val.parse().unwrap(),
+        };
     }
 }
 
@@ -178,12 +186,14 @@ impl Parser {
 mod tests {
     use super::*;
     fn check_parser_errors(p: Parser) {
-      if p.errors.len() == 0 { return; }
-      println!("Parser has {} errors.", p.errors.len());
-      for error in p.errors {
-        println!("Parser error: {}", error);
-      }
-      panic!();
+        if p.errors.len() == 0 {
+            return;
+        }
+        println!("Parser has {} errors.", p.errors.len());
+        for error in p.errors {
+            println!("Parser error: {}", error);
+        }
+        panic!();
     }
     #[test]
     fn test_let_statements() {
@@ -279,32 +289,57 @@ mod tests {
     }
     #[test]
     fn test_identifier_expression() {
-      let input = r#"
+        let input = r#"
       foobar;
       "#;
-      let l = Lexer::new(input);
-      let mut parser = Parser::new(l);
-      let program = parser.parse_program();
-      check_parser_errors(parser);
-      assert_eq!(program.statements.len(), 1);
-      let stmt = &program.statements[0];
-      println!("{:?}", stmt.r#type);
-      match &stmt.r#type {
-        NodeType::Statement { r#type } => {
-          match r#type {
-            StatementType::Expression { expression, .. } => {
-              match expression {
-                ExpressionType::Identifier { identifier } => {
-                  assert_eq!(identifier.value, "foobar");
-                  assert_eq!(identifier.token_literal(), "foobar");
+        let l = Lexer::new(input);
+        let mut parser = Parser::new(l);
+        let program = parser.parse_program();
+        check_parser_errors(parser);
+        assert_eq!(program.statements.len(), 1);
+        let stmt = &program.statements[0];
+        println!("{:?}", stmt.r#type);
+        match &stmt.r#type {
+            NodeType::Statement { r#type } => match r#type {
+                StatementType::Expression { expression, .. } => match expression {
+                    ExpressionType::Identifier { identifier } => {
+                        assert_eq!(identifier.value, "foobar");
+                        assert_eq!(identifier.token_literal(), "foobar");
+                    }
+                    _ => panic!(),
                 },
-                _ => panic!()
-              }
+                _ => panic!(),
             },
-            _ => panic!()
-          }
-        },
-        _ => panic!()
-      }
+            _ => panic!(),
+        }
+    }
+    #[test]
+    fn test_integer_literal_expressions() {
+        let input = r#"
+      5;
+      "#;
+        let l = Lexer::new(input);
+        let mut parser = Parser::new(l);
+        let program = parser.parse_program();
+        check_parser_errors(parser);
+        assert_eq!(program.statements.len(), 1);
+
+        let stmt = &program.statements[0];
+        match &stmt.r#type {
+            NodeType::Statement { r#type } => match r#type {
+                StatementType::Expression { expression, .. } => {
+                    println!("{:?}", expression);
+                    match expression {
+                        ExpressionType::Integer { value, .. } => {
+                            assert_eq!(*value, 5);
+                            assert_eq!(expression.token_literal(), "5");
+                        }
+                        _ => panic!(),
+                    }
+                }
+                _ => panic!(),
+            },
+            _ => panic!(),
+        }
     }
 }

@@ -51,7 +51,7 @@ impl StatementType {
                 return token.clone().literal;
             }
             StatementType::Expression { token, .. } => {
-              return token.clone().literal;
+                return token.clone().literal;
             }
             _ => "".to_string(),
         }
@@ -88,6 +88,7 @@ impl ToString for StatementType {
 #[derive(Debug, Clone)]
 pub enum ExpressionType {
     Identifier { identifier: Identifier },
+    Integer { token: Token, value: i64 },
     None,
 }
 
@@ -95,6 +96,7 @@ impl ExpressionType {
     pub fn token_literal(&self) -> String {
         match &self {
             ExpressionType::Identifier { identifier } => identifier.token_literal(),
+            ExpressionType::Integer { token, .. } => token.literal.clone(),
             _ => "".to_string(),
         }
     }
@@ -104,6 +106,7 @@ impl ToString for ExpressionType {
     fn to_string(&self) -> String {
         match &self {
             ExpressionType::Identifier { identifier } => identifier.to_string(),
+            ExpressionType::Integer { token, .. } => token.literal.clone(),
             _ => "".to_string(),
         }
     }
