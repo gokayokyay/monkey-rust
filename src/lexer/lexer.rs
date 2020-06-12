@@ -38,14 +38,13 @@ impl Lexer {
             '=' => {
                 println!("{}", self.peek_char());
                 if self.peek_char() == '=' {
-                    let ch = self.ch;
                     // Workaround for symbols with 2 chars
                     self.read_char();
                     self.read_char();
                     // End workaround
                     return Token {
                         token_type: TokenTypes::EQ,
-                        literal: ch.to_string() + &self.ch.to_string(),
+                        literal: "==".to_string(),
                     };
                 }
                 Token {
@@ -80,14 +79,13 @@ impl Lexer {
             '!' => {
                 if self.peek_char() == '=' {
                     println!("{}", self.peek_char());
-                    let ch = self.ch;
                     // Workaround for symbols with 2 chars
                     self.read_char();
                     self.read_char();
                     // End workaround
                     return Token {
                         token_type: TokenTypes::NOT_EQ,
-                        literal: ch.to_string() + &self.ch.to_string(),
+                        literal: "!=".to_string(),
                     };
                 }
                 Token {

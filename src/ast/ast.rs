@@ -99,6 +99,16 @@ pub enum ExpressionType {
         operator: String,
         right: Box<ExpressionType>,
     },
+    Infix {
+        token: Token,
+        left: Box<ExpressionType>,
+        operator: String,
+        right: Box<ExpressionType>,
+    },
+    Boolean {
+        token: Token,
+        value: bool,
+    },
     None,
 }
 
@@ -108,6 +118,8 @@ impl ExpressionType {
             ExpressionType::Identifier { identifier } => identifier.token_literal(),
             ExpressionType::Integer { token, .. } => token.literal.clone(),
             ExpressionType::Prefix { token, .. } => token.literal.clone(),
+            ExpressionType::Infix { token, .. } => token.literal.clone(),
+            ExpressionType::Boolean { token, .. } => token.literal.clone(),
             _ => "".to_string(),
         }
     }
@@ -128,6 +140,21 @@ impl ToString for ExpressionType {
                 out = out + ")";
                 out
             }
+            ExpressionType::Infix {
+                left,
+                operator,
+                right,
+                ..
+            } => {
+                let mut out = String::from("");
+                out = out + "(";
+                out = out + &left.to_string();
+                out = out + &format!(" {} ", operator);
+                out = out + &right.to_string();
+                out = out + ")";
+                out
+            }
+            ExpressionType::Boolean { token, .. } => token.literal.clone(),
             _ => "".to_string(),
         }
     }
