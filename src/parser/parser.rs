@@ -196,7 +196,6 @@ impl Parser {
         return left_expr;
     }
     pub fn parse_prefix(&mut self, token_type: TokenTypes) -> Option<ExpressionType> {
-        println!("{:?}", token_type);
         match token_type {
             TokenTypes::IDENT => Some(self.parse_identifier()),
             TokenTypes::INT => Some(self.parse_integer_literal()),

@@ -1,5 +1,5 @@
 use crate::lexer::lexer::Lexer;
-use crate::token::token_types::TokenTypes;
+use crate::parser::parser::Parser;
 use std::io::{stdin, stdout, Write};
 
 static PROMPT: &str = ">> ";
@@ -7,21 +7,15 @@ static PROMPT: &str = ">> ";
 pub fn start() {
     loop {
         let mut input = String::new();
+        println!("");
         print!("{}", PROMPT);
         let _ = stdout().flush();
         match stdin().read_line(&mut input) {
             Ok(_) => {
-                print!("{}", input);
-                let mut l = Lexer::new(&input);
-                #[allow(irrefutable_let_patterns)]
-                while let token = l.next_token() {
-                    if token.token_type == TokenTypes::EOF
-                        || token.token_type == TokenTypes::ILLEGAL
-                    {
-                        break;
-                    }
-                    println!("{:?}", token);
-                }
+                let l = Lexer::new(&input);
+                let mut p = Parser::new(l);
+                let program = p.parse_program();
+                print!("{}", program.to_string());
             }
             Err(error) => println!("Error: {}", error),
         }
