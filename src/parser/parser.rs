@@ -25,6 +25,7 @@ pub fn get_precedence_map() -> HashMap<TokenTypes, PRECEDENCES> {
     precedences_map.insert(TokenTypes::MINUS, PRECEDENCES::SUM);
     precedences_map.insert(TokenTypes::SLASH, PRECEDENCES::PRODUCT);
     precedences_map.insert(TokenTypes::ASTERISK, PRECEDENCES::PRODUCT);
+    precedences_map.insert(TokenTypes::LPAREN, PRECEDENCES::CALL);
     precedences_map
 }
 
@@ -114,13 +115,18 @@ impl Parser {
         if !self.expect_peek(TokenTypes::IDENT) {
             return None;
         }
+        let cur_tok = self.current_token.clone();
 
+        if !self.expect_peek(TokenTypes::ASSIGN) {
+            return None;
+        }
+        self.next_token();
         match &mut stmt.r#type {
             NodeType::Statement { r#type: x } => {
                 match x {
                     StatementType::Let {
                         token: _,
-                        value: _,
+                        value: x_value,
                         name: x_name,
                     } => {
                         // *x_name = Identifier {
@@ -130,20 +136,17 @@ impl Parser {
                         std::mem::swap(
                             x_name,
                             &mut Identifier {
-                                token: self.current_token.clone(),
-                                value: self.current_token.literal.clone(),
+                                token: cur_tok.clone(),
+                                value: cur_tok.literal,
                             },
                         );
+                        *x_value = Box::from(self.parse_expression(PRECEDENCES::LOWEST).unwrap());
                     }
                     _ => return None,
                 }
             }
             _ => return None,
         };
-
-        if !self.expect_peek(TokenTypes::ASSIGN) {
-            return None;
-        }
 
         while !self.current_token_is(TokenTypes::SEMICOLON) {
             self.next_token();
@@ -152,15 +155,16 @@ impl Parser {
         return Some(stmt);
     }
     pub fn parse_return_statement(&mut self) -> Option<Node> {
+        let cur_tok = self.current_token.clone();
+        self.next_token();
         let stmt = Node {
             r#type: NodeType::Statement {
                 r#type: StatementType::Return {
-                    token: self.current_token.clone(),
-                    return_value: Box::from(ExpressionType::None),
+                    token: cur_tok,
+                    return_value: Box::from(self.parse_expression(PRECEDENCES::LOWEST).unwrap()),
                 },
             },
         };
-        self.next_token();
         while !self.current_token_is(TokenTypes::SEMICOLON) {
             self.next_token();
         }
@@ -185,7 +189,7 @@ impl Parser {
         while !self.peek_token_is(TokenTypes::SEMICOLON) && precedence < self.peek_precedence() {
             self.next_token();
             if let Some(x) = left_expr.clone() {
-                left_expr = Some(self.parse_infix_expression(x));
+                left_expr = Some(self.parse_infix(x));
             }
         }
 
@@ -257,6 +261,12 @@ impl Parser {
         };
 
         return expr;
+    }
+    pub fn parse_infix(&mut self, left: ExpressionType) -> ExpressionType {
+        match self.current_token.clone().token_type {
+            TokenTypes::LPAREN => self.parse_call_expression(left),
+            _ => self.parse_infix_expression(left),
+        }
     }
     pub fn parse_boolean(&mut self) -> ExpressionType {
         return ExpressionType::Boolean {
@@ -371,6 +381,33 @@ impl Parser {
         }
         return identifiers;
     }
+    pub fn parse_call_expression(&mut self, function: ExpressionType) -> ExpressionType {
+        let cur_tok = self.current_token.clone();
+        let expr = ExpressionType::CallExpression {
+            function: Box::new(function),
+            token: cur_tok,
+            arguments: self.parse_call_arguments(),
+        };
+        return expr;
+    }
+    pub fn parse_call_arguments(&mut self) -> Vec<ExpressionType> {
+        let mut args = vec![];
+        if self.peek_token_is(TokenTypes::RPAREN) {
+            self.next_token();
+            return args;
+        }
+        self.next_token();
+        args.push(self.parse_expression(PRECEDENCES::LOWEST).unwrap());
+        while self.peek_token_is(TokenTypes::COMMA) {
+            self.next_token();
+            self.next_token();
+            args.push(self.parse_expression(PRECEDENCES::LOWEST).unwrap());
+        }
+        if !self.expect_peek(TokenTypes::RPAREN) {
+            panic!();
+        }
+        return args;
+    }
 }
 
 #[cfg(test)]
@@ -424,6 +461,7 @@ mod tests {
         }
     }
     fn test_let_statement(statement: &Node, name: &str) -> bool {
+        println!("{:?}", statement);
         if statement.token_literal() != "let" {
             return false;
         }
@@ -879,6 +917,18 @@ mod tests {
                 input: "!(true == true)".to_string(),
                 expected: "(!(true == true))".to_string(),
             },
+            OperatorPrecedenceTest {
+                input: "a + add(b * c) + d".to_string(),
+                expected: "((a + add((b * c))) + d)".to_string(),
+            },
+            OperatorPrecedenceTest {
+                input: "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))".to_string(),
+                expected: "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))".to_string(),
+            },
+            OperatorPrecedenceTest {
+                input: "add(a + b + c * d / f + g)".to_string(),
+                expected: "add((((a + b) + ((c * d) / f)) + g))".to_string(),
+            },
         ];
         for prec in tests {
             let l = Lexer::new(&prec.input);
@@ -900,6 +950,7 @@ mod tests {
     }
 
     fn test_literal_expression(expr: ExpressionType, expected: ExpressionType) -> bool {
+        println!("{:?}", expr);
         match expr.clone() {
             ExpressionType::Identifier { .. } => {
                 if let ExpressionType::Identifier {
@@ -1135,6 +1186,166 @@ mod tests {
                     }
                     _ => panic!(),
                 },
+                _ => panic!(),
+            },
+            _ => panic!(),
+        }
+    }
+    #[test]
+    fn test_call_expression_parsing() {
+        let input = r#"
+            add(1, 2 * 3, 4 + 5);
+        "#;
+        let l = Lexer::new(input);
+        let mut parser = Parser::new(l);
+        let program = parser.parse_program();
+        check_parser_errors(parser);
+        assert_eq!(program.statements.len(), 1);
+        let stmt = &program.statements[0];
+        match stmt.r#type.clone() {
+            NodeType::Statement { r#type: stm_type } => {
+                match stm_type {
+                    StatementType::Expression { expression, .. } => {
+                        match expression.deref() {
+                            ExpressionType::CallExpression {
+                                function,
+                                arguments,
+                                ..
+                            } => {
+                                // let add_ident = Identifier {
+                                //     token: Token::new(TokenTypes::IDENT, "add"),
+                                //     value: "add".to_string(),
+                                // };
+                                test_identifier(function.deref().clone(), "add".to_string());
+                                assert_eq!(arguments.len(), 3);
+                                test_literal_expression(
+                                    arguments[0].clone(),
+                                    ExpressionType::Integer {
+                                        token: Token::new(TokenTypes::INT, "1"),
+                                        value: 1,
+                                    },
+                                );
+                                test_infix_expression(
+                                    arguments[1].clone(),
+                                    ExpressionType::Integer {
+                                        token: Token::new(TokenTypes::INT, "2"),
+                                        value: 2,
+                                    },
+                                    "*".to_string(),
+                                    ExpressionType::Integer {
+                                        token: Token::new(TokenTypes::INT, "3"),
+                                        value: 3,
+                                    },
+                                );
+                                test_infix_expression(
+                                    arguments[2].clone(),
+                                    ExpressionType::Integer {
+                                        token: Token::new(TokenTypes::INT, "4"),
+                                        value: 4,
+                                    },
+                                    "+".to_string(),
+                                    ExpressionType::Integer {
+                                        token: Token::new(TokenTypes::INT, "5"),
+                                        value: 5,
+                                    },
+                                );
+                            }
+                            _ => panic!(),
+                        }
+                    }
+                    _ => panic!(),
+                }
+            }
+            _ => panic!(),
+        }
+    }
+    #[test]
+    fn test_let_statement_expressions() {
+        let input = r#"
+        let x = 5;
+        let y = true;
+        let foobar = y;
+        "#;
+        let l = Lexer::new(input);
+        let mut p = Parser::new(l);
+        let mut program = p.parse_program();
+        assert_eq!(program.statements.len(), 3);
+        let first = program.statements.remove(0);
+        assert_eq!(test_let_statement(&first, "x"), true);
+        match first.r#type {
+            NodeType::Statement { r#type } => match r#type {
+                StatementType::Let { value, .. } => {
+                    println!("{:?}", value);
+                    match value.deref() {
+                        ExpressionType::Integer { .. } => {
+                            assert_eq!(
+                                test_literal_expression(
+                                    value.deref().clone(),
+                                    ExpressionType::Integer {
+                                        token: Token::new(TokenTypes::INT, "5"),
+                                        value: 5,
+                                    },
+                                ),
+                                true
+                            );
+                        }
+                        _ => panic!(),
+                    }
+                }
+                _ => panic!(),
+            },
+            _ => panic!(),
+        }
+        let second = program.statements.remove(0);
+        assert_eq!(test_let_statement(&second, "y"), true);
+        match second.r#type {
+            NodeType::Statement { r#type } => match r#type {
+                StatementType::Let { value, .. } => {
+                    println!("{:?}", value);
+                    match value.deref() {
+                        ExpressionType::Boolean { .. } => {
+                            assert_eq!(
+                                test_literal_expression(
+                                    value.deref().clone(),
+                                    ExpressionType::Boolean {
+                                        token: Token::new(TokenTypes::TRUE, "true"),
+                                        value: true
+                                    }
+                                ),
+                                true
+                            );
+                        }
+                        _ => panic!(),
+                    }
+                }
+                _ => panic!(),
+            },
+            _ => panic!(),
+        }
+        let third = program.statements.remove(0);
+        assert_eq!(test_let_statement(&third, "foobar"), true);
+        match third.r#type {
+            NodeType::Statement { r#type } => match r#type {
+                StatementType::Let { value, .. } => {
+                    println!("{:?}", value);
+                    match value.deref() {
+                        ExpressionType::Identifier { .. } => {
+                            assert_eq!(
+                                test_literal_expression(
+                                    value.deref().clone(),
+                                    ExpressionType::Identifier {
+                                        identifier: Identifier {
+                                            token: Token::new(TokenTypes::IDENT, "y"),
+                                            value: "y".to_string()
+                                        }
+                                    }
+                                ),
+                                true
+                            );
+                        }
+                        _ => panic!(),
+                    }
+                }
                 _ => panic!(),
             },
             _ => panic!(),
