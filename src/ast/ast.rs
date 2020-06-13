@@ -23,16 +23,20 @@ impl ToString for Identifier {
 pub enum StatementType {
     Let {
         token: Token,
-        value: ExpressionType,
+        value: Box<ExpressionType>,
         name: Identifier,
     },
     Return {
         token: Token,
-        return_value: ExpressionType,
+        return_value: Box<ExpressionType>,
     },
     Expression {
         token: Token,
-        expression: ExpressionType,
+        expression: Box<ExpressionType>,
+    },
+    Block {
+        token: Token,
+        statements: Vec<Box<StatementType>>,
     },
     None,
 }
@@ -51,6 +55,9 @@ impl StatementType {
                 return token.clone().literal;
             }
             StatementType::Expression { token, .. } => {
+                return token.clone().literal;
+            }
+            StatementType::Block { token, .. } => {
                 return token.clone().literal;
             }
             _ => "".to_string(),
@@ -78,6 +85,11 @@ impl ToString for StatementType {
             }
             StatementType::Expression { expression, .. } => {
                 out = out + &expression.to_string();
+            }
+            StatementType::Block { statements, .. } => {
+                for s in statements {
+                    out = out + &s.to_string();
+                }
             }
             _ => out = out + "",
         };
@@ -109,6 +121,24 @@ pub enum ExpressionType {
         token: Token,
         value: bool,
     },
+    If {
+        token: Token,
+        condition: Box<ExpressionType>,
+        // BlockStatement
+        consequence: StatementType,
+        // BlockStatement
+        alternative: Option<StatementType>,
+    },
+    FunctionLiteral {
+        token: Token,
+        parameters: Vec<Identifier>,
+        body: Box<StatementType>,
+    },
+    CallExpression {
+        token: Token,
+        function: Box<ExpressionType>,
+        arguments: Vec<ExpressionType>,
+    },
     None,
 }
 
@@ -120,6 +150,9 @@ impl ExpressionType {
             ExpressionType::Prefix { token, .. } => token.literal.clone(),
             ExpressionType::Infix { token, .. } => token.literal.clone(),
             ExpressionType::Boolean { token, .. } => token.literal.clone(),
+            ExpressionType::If { token, .. } => token.literal.clone(),
+            ExpressionType::FunctionLiteral { token, .. } => token.literal.clone(),
+            ExpressionType::CallExpression { token, .. } => token.literal.clone(),
             _ => "".to_string(),
         }
     }
@@ -155,6 +188,56 @@ impl ToString for ExpressionType {
                 out
             }
             ExpressionType::Boolean { token, .. } => token.literal.clone(),
+            ExpressionType::If {
+                condition,
+                consequence,
+                alternative,
+                ..
+            } => {
+                let mut out = String::from("");
+                out = out + "if";
+                out = out + &condition.to_string();
+                out = out + " ";
+                out = out + &consequence.to_string();
+                if let Some(x) = alternative {
+                    out = out + "else ";
+                    out = out + &x.to_string();
+                }
+                out
+            }
+            ExpressionType::FunctionLiteral {
+                parameters,
+                body,
+                token,
+            } => {
+                let mut out = String::from("");
+                let mut params = vec![];
+                for p in parameters {
+                    params.push(p.to_string());
+                }
+                out = out + &token.literal.clone();
+                out = out + "(";
+                out = out + &params.join(", ");
+                out = out + ")";
+                out = out + &body.to_string();
+                return out;
+            }
+            ExpressionType::CallExpression {
+                arguments,
+                function,
+                ..
+            } => {
+                let mut out = String::from("");
+                let mut args = vec![];
+                for a in arguments {
+                    args.push(a.to_string());
+                }
+                out = out + &function.to_string();
+                out = out + "(";
+                out = out + &args.join(", ");
+                out = out + ")";
+                return out;
+            }
             _ => "".to_string(),
         }
     }
@@ -249,12 +332,12 @@ mod test {
                                 token: Token::new(TokenTypes::IDENT, "myVar"),
                                 value: "myVar".to_string(),
                             },
-                            value: ExpressionType::Identifier {
+                            value: Box::from(ExpressionType::Identifier {
                                 identifier: Identifier {
                                     token: Token::new(TokenTypes::IDENT, "anotherVar"),
                                     value: "anotherVar".to_string(),
                                 },
-                            },
+                            }),
                         }
                     },
                 },
