@@ -1,3 +1,4 @@
+use crate::evaluator::evaluator::Evaluator;
 use crate::lexer::lexer::Lexer;
 use crate::parser::parser::Parser;
 use std::io::{stdin, stdout, Write};
@@ -15,7 +16,8 @@ pub fn start() {
                 let l = Lexer::new(&input);
                 let mut p = Parser::new(l);
                 let program = p.parse_program();
-                print!("{}", program.to_string());
+                let mut eval = Evaluator {};
+                print!("{}", eval.eval_program(program).inspect());
             }
             Err(error) => println!("Error: {}", error),
         }
