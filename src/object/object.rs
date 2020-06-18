@@ -2,6 +2,7 @@
 pub enum Object {
     Integer { value: i64 },
     Boolean { value: bool },
+    Return { value: Box<Object> },
     Null,
 }
 
@@ -10,6 +11,7 @@ impl Object {
         match self {
             Self::Integer { value } => value.to_string(),
             Self::Boolean { value } => value.to_string(),
+            Self::Return { value } => (*value.inspect()).to_string(),
             Self::Null => "null".to_string(),
         }
     }
@@ -17,6 +19,7 @@ impl Object {
         match self {
             Self::Integer { .. } => "INTEGER",
             Self::Boolean { .. } => "BOOLEAN",
+            Self::Return { .. } => "RETURN_VALUE",
             Self::Null => "NULL",
         }
     }

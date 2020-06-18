@@ -12,8 +12,11 @@ impl Evaluator {
     }
     pub fn eval_statements(&mut self, statements: Vec<Node>) -> Object {
         let mut result = Object::Null;
-        for stmt in statements {
-            result = self.eval_statement(stmt);
+        for stmt in &statements {
+            result = self.eval_statement(stmt.clone());
+            if let Object::Return { value } = result {
+                return value.deref().clone();
+            }
         }
         return result;
     }
@@ -23,9 +26,36 @@ impl Evaluator {
                 StatementType::Expression { expression, .. } => {
                     self.eval_expression(expression.deref().clone())
                 }
+                StatementType::Block { statements, .. } => {
+                    let statements = statements.deref().clone().to_vec();
+                    let statements = statements
+                        .iter()
+                        .map(|x| {
+                            let node = Node {
+                                r#type: NodeType::Statement {
+                                    r#type: x.deref().clone(),
+                                },
+                            };
+                            return node;
+                        })
+                        .collect::<Vec<_>>();
+                    for stmt in &statements.clone() {
+                        let result = self.eval_statement(stmt.clone());
+                        if let Object::Return { .. } = result {
+                            return result;
+                        }
+                    }
+                    self.eval_statements(statements)
+                }
+                StatementType::Return { return_value, .. } => {
+                    let val = self.eval_expression(return_value.deref().clone());
+                    return Object::Return {
+                        value: Box::from(val),
+                    };
+                }
                 _ => Object::Null,
             },
-            _ => Object::Null,
+            _ => Object::Null, // NodeType::Expression { r#type } => self.eval_expression(r#type),
         }
     }
     pub fn eval_expression(&mut self, expression: ExpressionType) -> Object {
@@ -52,6 +82,9 @@ impl Evaluator {
                 let obj_left = self.eval_expression(*left);
                 let obj_right = self.eval_expression(*right);
                 return self.eval_infix_expression(operator, obj_left, obj_right);
+            }
+            ExpressionType::If { .. } => {
+                return self.eval_if_expression(expression);
             }
             _ => STATIC_NULL_OBJECT,
         }
@@ -189,8 +222,47 @@ impl Evaluator {
             _ => return STATIC_NULL_OBJECT,
         };
     }
+    pub fn eval_if_expression(&mut self, ie: ExpressionType) -> Object {
+        let cond;
+        let cons;
+        let alt;
+        match ie {
+            ExpressionType::If {
+                ref consequence,
+                ref alternative,
+                ref condition,
+                ..
+            } => {
+                cons = Node {
+                    r#type: NodeType::Statement {
+                        r#type: consequence.clone(),
+                    },
+                };
+                alt = alternative.clone();
+                cond = self.eval_expression(condition.deref().clone());
+            }
+            _ => panic!(),
+        };
+        if self.is_truthy(cond) {
+            return self.eval_statement(cons);
+        } else if let Some(a) = alt {
+            return self.eval_statement(Node {
+                r#type: NodeType::Statement { r#type: a.clone() },
+            });
+        } else {
+            return Object::Null;
+        }
+    }
+    pub fn is_truthy(&mut self, obj: Object) -> bool {
+        match obj {
+            Object::Null => false,
+            Object::Boolean { value } => value,
+            _ => true,
+        }
+    }
 }
 
+#[allow(dead_code)]
 mod tests {
     use super::*;
 
@@ -288,6 +360,45 @@ mod tests {
         for t in &tests {
             let eval = test_eval(t.0);
             test_boolean_object(eval, t.1);
+        }
+    }
+    #[test]
+    fn test_if_else_expressions() {
+        let tests = [
+            ("if (true) { 10 }", 10),
+            ("if (1) { 10 }", 10),
+            ("if (1 < 2) { 10 }", 10),
+            ("if (1 > 2) { 10 } else { 20 }", 20),
+            ("if (1 < 2) { 10 } else { 20 }", 10),
+        ];
+        let null_tests = [
+            ("if (1 > 2) { 10 }", STATIC_NULL_OBJECT),
+            ("if (false) { 10 }", STATIC_NULL_OBJECT),
+        ];
+        for t in &tests {
+            let eval = test_eval(t.0);
+            test_integer_object(eval, t.1);
+        }
+        for n in &null_tests {
+            let eval = test_eval(n.0);
+            test_null_object(eval, n.1.clone());
+        }
+    }
+    fn test_null_object(obj: Object, null: Object) {
+        assert_eq!(obj, null);
+    }
+    #[test]
+    fn test_return_statements() {
+        let tests = [
+            ("return 10;", 10),
+            ("return 10; 9;", 10),
+            ("return 2 * 5; 9;", 10),
+            ("9; return 2 * 5; 9;", 10),
+            ("if (10 > 1) { if (10 > 1) { return 10 ;} return 1; }", 10),
+        ];
+        for t in &tests {
+            let eval = test_eval(t.0);
+            test_integer_object(eval, t.1);
         }
     }
 }
