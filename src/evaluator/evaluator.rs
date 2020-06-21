@@ -1,10 +1,14 @@
 use crate::ast::ast::{ExpressionType, Node, NodeType, Program, StatementType};
 use crate::lexer::lexer::Lexer;
-use crate::object::object::{Object, STATIC_FALSE_OBJECT, STATIC_NULL_OBJECT, STATIC_TRUE_OBJECT};
+use crate::object::object::{
+    Environment, Object, STATIC_FALSE_OBJECT, STATIC_NULL_OBJECT, STATIC_TRUE_OBJECT,
+};
 use crate::parser::parser::Parser;
 use std::ops::Deref;
 
-pub struct Evaluator {}
+pub struct Evaluator {
+    pub env: Environment,
+}
 
 impl Evaluator {
     pub fn eval_program(&mut self, program: Program) -> Object {
@@ -16,6 +20,8 @@ impl Evaluator {
             result = self.eval_statement(stmt.clone());
             if let Object::Return { value } = result {
                 return value.deref().clone();
+            } else if let Object::Error { .. } = result {
+                return result;
             }
         }
         return result;
@@ -43,15 +49,27 @@ impl Evaluator {
                         let result = self.eval_statement(stmt.clone());
                         if let Object::Return { .. } = result {
                             return result;
+                        } else if let Object::Error { .. } = result {
+                            return result;
                         }
                     }
                     self.eval_statements(statements)
                 }
                 StatementType::Return { return_value, .. } => {
                     let val = self.eval_expression(return_value.deref().clone());
+                    if self.is_error(&val) {
+                        return val;
+                    }
                     return Object::Return {
                         value: Box::from(val),
                     };
+                }
+                StatementType::Let { value, name, .. } => {
+                    let val = self.eval_expression(value.deref().clone());
+                    if self.is_error(&val) {
+                        return val;
+                    }
+                    return self.env.set(name.value, val.clone());
                 }
                 _ => Object::Null,
             },
@@ -71,6 +89,9 @@ impl Evaluator {
                 operator, right, ..
             } => {
                 let obj_right = self.eval_expression(*right);
+                if self.is_error(&obj_right) {
+                    return obj_right;
+                }
                 return self.eval_prefix_expression(operator, obj_right);
             }
             ExpressionType::Infix {
@@ -81,10 +102,25 @@ impl Evaluator {
             } => {
                 let obj_left = self.eval_expression(*left);
                 let obj_right = self.eval_expression(*right);
+                if self.is_error(&obj_left) {
+                    return obj_left;
+                } else if self.is_error(&obj_right) {
+                    return obj_right;
+                }
                 return self.eval_infix_expression(operator, obj_left, obj_right);
             }
             ExpressionType::If { .. } => {
                 return self.eval_if_expression(expression);
+            }
+            ExpressionType::Identifier { identifier } => {
+                if let Some(x) = self.env.get(identifier.value.clone()) {
+                    return x.clone();
+                } else {
+                    return Object::new_error(format!(
+                        "identifier not found: {}",
+                        identifier.value
+                    ));
+                }
             }
             _ => STATIC_NULL_OBJECT,
         }
@@ -98,7 +134,13 @@ impl Evaluator {
             "-" => {
                 return self.eval_minus_prefix_operator_expression(right);
             }
-            _ => STATIC_NULL_OBJECT,
+            _ => {
+                return Object::new_error(format!(
+                    "unknown operator {}{}",
+                    operator,
+                    right.type_string()
+                ))
+            }
         }
     }
     pub fn eval_bang_operator_expression(&mut self, right: Object) -> Object {
@@ -116,7 +158,7 @@ impl Evaluator {
             Object::Integer { value } => {
                 return Object::Integer { value: -value };
             }
-            _ => return STATIC_NULL_OBJECT,
+            _ => return Object::new_error(format!("unknown operator: -{}", right.type_string())),
         }
     }
     pub fn eval_infix_expression(
@@ -151,10 +193,30 @@ impl Evaluator {
                         value: left != right,
                     }
                 }
-                _ => STATIC_NULL_OBJECT,
+                _ => {
+                    return Object::new_error(format!(
+                        "unknown operator: {} {} {}",
+                        left.type_string(),
+                        operator,
+                        right.type_string()
+                    ))
+                }
             };
+        } else if left.type_string() != right.type_string() {
+            return Object::new_error(format!(
+                "type mismatch: {} {} {}",
+                left.type_string(),
+                operator,
+                right.type_string()
+            ));
+        } else {
+            return Object::new_error(format!(
+                "unknown operator: {} {} {}",
+                left.type_string(),
+                operator,
+                right.type_string()
+            ));
         }
-        return STATIC_NULL_OBJECT;
     }
     pub fn eval_integer_infix_expression(
         &mut self,
@@ -219,7 +281,14 @@ impl Evaluator {
                     return STATIC_FALSE_OBJECT;
                 }
             }
-            _ => return STATIC_NULL_OBJECT,
+            _ => {
+                return Object::new_error(format!(
+                    "unknown operator: {} {} {}",
+                    left.type_string(),
+                    operator,
+                    right.type_string()
+                ))
+            }
         };
     }
     pub fn eval_if_expression(&mut self, ie: ExpressionType) -> Object {
@@ -243,6 +312,9 @@ impl Evaluator {
             }
             _ => panic!(),
         };
+        if self.is_error(&cond) {
+            return cond;
+        }
         if self.is_truthy(cond) {
             return self.eval_statement(cons);
         } else if let Some(a) = alt {
@@ -260,6 +332,9 @@ impl Evaluator {
             _ => true,
         }
     }
+    pub fn is_error(&mut self, obj: &Object) -> bool {
+        return obj.type_string() == "ERROR";
+    }
 }
 
 #[allow(dead_code)]
@@ -270,7 +345,8 @@ mod tests {
         let l = Lexer::new(input);
         let mut p = Parser::new(l);
         let program = p.parse_program();
-        let mut evaluator = Evaluator {};
+        let env = Environment::new();
+        let mut evaluator = Evaluator { env };
         return evaluator.eval_program(program);
     }
     #[test]
@@ -399,6 +475,51 @@ mod tests {
         for t in &tests {
             let eval = test_eval(t.0);
             test_integer_object(eval, t.1);
+        }
+    }
+    #[test]
+    fn test_error_handling() {
+        let tests = [
+            ("5 + true;", "type mismatch: INTEGER + BOOLEAN"),
+            ("5 + true; 5;", "type mismatch: INTEGER + BOOLEAN"),
+            ("-true", "unknown operator: -BOOLEAN"),
+            ("true + false;", "unknown operator: BOOLEAN + BOOLEAN"),
+            ("5; true + false; 5", "unknown operator: BOOLEAN + BOOLEAN"),
+            (
+                "if (10 > 1) { true + false; }",
+                "unknown operator: BOOLEAN + BOOLEAN",
+            ),
+            (
+                "if (10 > 1) {
+                    if (10 > 1) {
+                    return true + false;
+                    }
+                    return 1;
+                    }",
+                "unknown operator: BOOLEAN + BOOLEAN",
+            ),
+            ("foobar", "identifier not found: foobar"),
+        ];
+        for t in &tests {
+            let eval = test_eval(t.0);
+            match eval {
+                Object::Error { message } => {
+                    assert_eq!(message, t.1);
+                }
+                _ => panic!(),
+            }
+        }
+    }
+    #[test]
+    fn test_let_statements() {
+        let tests = [
+            ("let a = 5; a;", 5),
+            ("let a = 5 * 5; a;", 25),
+            ("let a = 5; let b = a; b;", 5),
+            ("let a = 5; let b = a; let c = a + b + 5; c;", 15),
+        ];
+        for t in &tests {
+            test_integer_object(test_eval(t.0), t.1);
         }
     }
 }
